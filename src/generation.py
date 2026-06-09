@@ -92,6 +92,12 @@ def _clean_json_output(raw: str) -> str:
     raw = re.sub(r"```json|```", "", raw).strip()
     raw = re.sub(r",\s*}", "}", raw)
     raw = re.sub(r",\s*]", "]", raw)
+    # Truncate at the last complete closing bracket when output is cut mid-value
+    for closing in ["}", "]"]:
+        last = raw.rfind(closing)
+        if last != -1:
+            raw = raw[:last + 1]
+            break
     return raw
 
 
