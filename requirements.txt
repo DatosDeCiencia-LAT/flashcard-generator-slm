@@ -4,7 +4,6 @@ paddleocr
 paddlepaddle
 pillow
 numpy
-llama-cpp-python
 llama-index-core
 llama-index-embeddings-huggingface
 llama-index-vector-stores-chroma
@@ -12,3 +11,4 @@ chromadb
 weasyprint
 huggingface-hub
 torch --index-url https://download.pytorch.org/whl/cpu
+llama-cpp-python==0.3.2 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
