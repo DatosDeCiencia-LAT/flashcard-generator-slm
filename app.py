@@ -93,17 +93,31 @@ def _safe_filename(topic: str) -> str:
     return safe or "output"
 
 
+MAX_ROWS = 8
+
+
+def _parse_mode(raw: str) -> str:
+    return "summary" if "sum" in raw.strip().lower() else "flashcard"
+
+
 def generate_card_callback(
     pdf_file,
     notes_image,
     ref_image,
-    topic: str,
     page_start: int,
     page_end: int,
-    mode: str,
+    visible,
+    *topic_mode_pairs,
 ):
-    if not topic.strip():
-        yield "Please enter a topic.", None
+    topics = list(topic_mode_pairs[:MAX_ROWS])
+    modes  = list(topic_mode_pairs[MAX_ROWS:])
+    valid  = [
+        (t.strip(), m)
+        for t, m, v in zip(topics, modes, visible)
+        if v and t.strip()
+    ]
+    if not valid:
+        yield "Please add at least one topic.", None
         return
 
     try:
@@ -122,23 +136,30 @@ def generate_card_callback(
             persist_dir     = INDEX_DIR / f"session_{hash(text[:100])}",
         )
 
-        gradio_mode = "flashcard" if mode == "Flash Card" else "summary"
-        yield "Generating with AI model (this may take 1–3 minutes)...", None
-        result = generate_flashcard(
-            query       = topic,
-            index       = index,
-            llm         = llm,
-            embed_model = embed_model,
-            mode        = gradio_mode,
-        )
-
-        yield "Exporting to PDF...", None
         ref_image_pil = ref_imgs[0] if ref_imgs else None
-        pdf_out       = OUT_DIR.resolve() / f"{_safe_filename(topic)}_{gradio_mode}.pdf"
-        export_to_pdf(result, pdf_out, reference_image=ref_image_pil)
+        pdf_paths     = []
+        total         = len(valid)
 
-        label = result.concept if gradio_mode == "flashcard" else result.topic
-        yield f"Generated successfully: {label}", str(pdf_out)
+        for i, (topic, mode_raw) in enumerate(valid, 1):
+            gradio_mode = _parse_mode(mode_raw)
+            yield f"[{i}/{total}] Generating '{topic}' ({gradio_mode})...", pdf_paths or None
+
+            result = generate_flashcard(
+                query       = topic,
+                index       = index,
+                llm         = llm,
+                embed_model = embed_model,
+                mode        = gradio_mode,
+            )
+
+            pdf_out = OUT_DIR.resolve() / f"{_safe_filename(topic)}_{gradio_mode}.pdf"
+            export_to_pdf(result, pdf_out, reference_image=ref_image_pil)
+            pdf_paths.append(str(pdf_out))
+
+            label = result.concept if gradio_mode == "flashcard" else result.topic
+            yield f"[{i}/{total}] Done: {label}", pdf_paths
+
+        yield f"All {total} generation(s) complete.", pdf_paths
 
     except Exception as e:
         yield f"Error: {e}", None
@@ -166,24 +187,66 @@ with gr.Blocks(title="Flashcard Generator") as demo:
                     file_types=[".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"],
                     file_count="multiple",
                 )
-                ref_input   = gr.Image(label="Reference image (optional)",   type="filepath")
-                topic_input = gr.Textbox(label="Topic", placeholder="e.g. amide, photosynthesis, Newton's laws")
-                mode_input  = gr.Radio(
-                    choices=["Flash Card", "Summary"],
-                    value="Flash Card",
-                    label="Output mode",
-                )
+                ref_input = gr.Image(label="Reference image (optional)", type="filepath")
+
+                gr.Markdown("**Queries**")
+                visible_state = gr.State([i < 3 for i in range(MAX_ROWS)])
+                topic_boxes   = []
+                mode_radios   = []
+                del_btns      = []
+                rows_ui       = []
+
+                for i in range(MAX_ROWS):
+                    with gr.Row(visible=(i < 3)) as row:
+                        t = gr.Textbox(
+                            placeholder="e.g. alcanos, photosynthesis...",
+                            show_label=False,
+                            scale=4,
+                            min_width=200,
+                        )
+                        m = gr.Radio(
+                            choices=["Flash Card", "Summary"],
+                            value="Flash Card",
+                            show_label=False,
+                            scale=2,
+                        )
+                        d = gr.Button("✕", size="sm", scale=0, min_width=40)
+                    topic_boxes.append(t)
+                    mode_radios.append(m)
+                    del_btns.append(d)
+                    rows_ui.append(row)
+
+                # Wire delete buttons after all rows exist so outputs list is complete
+                for i, d in enumerate(del_btns):
+                    def _on_delete(vis, idx=i):
+                        new = list(vis)
+                        new[idx] = False
+                        return [gr.Row(visible=v) for v in new] + [new]
+                    d.click(_on_delete, inputs=visible_state, outputs=rows_ui + [visible_state])
+
+                add_btn = gr.Button("＋ Add query", size="sm")
+
+                def _on_add(vis):
+                    new = list(vis)
+                    for j in range(len(new)):
+                        if not new[j]:
+                            new[j] = True
+                            break
+                    return [gr.Row(visible=v) for v in new] + [new]
+
+                add_btn.click(_on_add, inputs=visible_state, outputs=rows_ui + [visible_state])
+
                 with gr.Row():
                     submit_btn = gr.Button("Generate", variant="primary")
                     cancel_btn = gr.Button("Cancel", variant="stop")
 
             with gr.Column(scale=1):
                 status_output = gr.Textbox(label="Status", interactive=False)
-                pdf_output    = gr.File(label="Download PDF")
+                pdf_output    = gr.File(label="Download PDFs", file_count="multiple")
 
         gen_event = submit_btn.click(
             fn      = generate_card_callback,
-            inputs  = [pdf_input, notes_input, ref_input, topic_input, page_start, page_end, mode_input],
+            inputs  = [pdf_input, notes_input, ref_input, page_start, page_end, visible_state] + topic_boxes + mode_radios,
             outputs = [status_output, pdf_output],
         )
         cancel_btn.click(fn=None, cancels=[gen_event])
@@ -194,9 +257,9 @@ with gr.Blocks(title="Flashcard Generator") as demo:
 
         1. Upload a PDF, handwritten notes image, or reference image (at least one required)
         2. If uploading a PDF, use the page sliders to select the relevant chapter
-        3. Enter the topic you want to study
-        4. Select Flash Card for a single concept or Summary for multiple concepts
-        5. Click Generate and download your PDF
+        3. Fill in the **Queries** — type a topic on the left, pick Flash Card or Summary on the right
+        4. Use **＋ Add query** to add more rows, or **✕** to remove one
+        5. Click Generate and download all PDFs
 
 
         > **Tip:** For best results, use specific single-concept queries like "amide",
