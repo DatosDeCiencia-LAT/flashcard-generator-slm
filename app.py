@@ -48,32 +48,31 @@ from src.export      import export_to_pdf
 
 
 def process_inputs(
-    pdf_file,
+    pdf_rows,       # list of (path, page_start, page_end) for each visible PDF row
     notes_image,
     ref_image,
-    page_start: int,
-    page_end: int,
 ) -> tuple[str, list]:
     from PIL import Image as PILImage
 
     text_parts     = []
     reference_imgs = []
 
-    if pdf_file is not None:
-        doc         = fitz.open(pdf_file)
-        total_pages = len(doc)
-        start       = max(0, page_start - 1)
-        end         = min(total_pages, page_end)
-
-        sub = fitz.open()
-        sub.insert_pdf(doc, from_page=start, to_page=end - 1)
-        tmp_path = Path(tempfile.mktemp(suffix=".pdf"))
-        sub.save(str(tmp_path))
-        doc.close()
-
+    if pdf_rows:
         from src.ingestion import extract_text_from_pdf
-        text_parts.append(extract_text_from_pdf(tmp_path))
-        tmp_path.unlink()
+        for pf, page_start, page_end in pdf_rows:
+            doc         = fitz.open(pf)
+            total_pages = len(doc)
+            start       = max(0, page_start - 1)
+            end         = min(total_pages, page_end)
+
+            sub = fitz.open()
+            sub.insert_pdf(doc, from_page=start, to_page=end - 1)
+            tmp_path = Path(tempfile.mktemp(suffix=".pdf"))
+            sub.save(str(tmp_path))
+            doc.close()
+
+            text_parts.append(extract_text_from_pdf(tmp_path))
+            tmp_path.unlink()
 
     if notes_image:
         from src.ingestion import extract_text_from_image
@@ -93,7 +92,8 @@ def _safe_filename(topic: str) -> str:
     return safe or "output"
 
 
-MAX_ROWS = 8
+MAX_PDF_ROWS = 4
+MAX_ROWS     = 8
 
 
 def _parse_mode(raw: str) -> str:
@@ -101,28 +101,38 @@ def _parse_mode(raw: str) -> str:
 
 
 def generate_card_callback(
-    pdf_file,
     notes_image,
     ref_image,
-    page_start: int,
-    page_end: int,
-    visible,
-    *topic_mode_pairs,
+    pdf_visible,
+    query_visible,
+    *rest,
 ):
-    topics = list(topic_mode_pairs[:MAX_ROWS])
-    modes  = list(topic_mode_pairs[MAX_ROWS:])
-    valid  = [
+    P = MAX_PDF_ROWS
+    Q = MAX_ROWS
+    pdf_files  = list(rest[:P])
+    pdf_starts = list(rest[P:2*P])
+    pdf_ends   = list(rest[2*P:3*P])
+    topics     = list(rest[3*P:3*P+Q])
+    modes      = list(rest[3*P+Q:])
+
+    pdf_rows = [
+        (pf, int(ps or 1), int(pe or 20))
+        for pf, ps, pe, v in zip(pdf_files, pdf_starts, pdf_ends, pdf_visible)
+        if v and pf
+    ]
+    valid = [
         (t.strip(), m)
-        for t, m, v in zip(topics, modes, visible)
+        for t, m, v in zip(topics, modes, query_visible)
         if v and t.strip()
     ]
     if not valid:
         yield "Please add at least one topic.", None
         return
 
+    pdf_paths = []
     try:
         yield "Extracting text from files...", None
-        text, ref_imgs = process_inputs(pdf_file, notes_image, ref_image, page_start, page_end)
+        text, ref_imgs = process_inputs(pdf_rows, notes_image, ref_image)
 
         if not text.strip():
             yield "No text could be extracted from the provided files.", None
@@ -137,7 +147,6 @@ def generate_card_callback(
         )
 
         ref_image_pil = ref_imgs[0] if ref_imgs else None
-        pdf_paths     = []
         total         = len(valid)
 
         for i, (topic, mode_raw) in enumerate(valid, 1):
@@ -162,7 +171,7 @@ def generate_card_callback(
         yield f"All {total} generation(s) complete.", pdf_paths
 
     except Exception as e:
-        yield f"Error: {e}", None
+        yield f"Error: {e}", pdf_paths or None
 
 
 # ── Gradio interface ───────────────────────────────────────────────────────────
@@ -179,9 +188,49 @@ with gr.Blocks(title="Flashcard Generator") as demo:
     with gr.Tab("Generate"):
         with gr.Row():
             with gr.Column(scale=1):
-                pdf_input   = gr.File(label="PDF document (optional)", file_types=[".pdf"])
-                page_start  = gr.Slider(minimum=1, maximum=500, value=1,  step=1, label="First page")
-                page_end    = gr.Slider(minimum=1, maximum=500, value=20, step=1, label="Last page")
+                gr.Markdown("**PDF documents**")
+                pdf_visible_state = gr.State([True] + [False] * (MAX_PDF_ROWS - 1))
+                pdf_file_inputs   = []
+                pdf_start_inputs  = []
+                pdf_end_inputs    = []
+                pdf_del_btns      = []
+                pdf_rows_ui       = []
+
+                for i in range(MAX_PDF_ROWS):
+                    with gr.Row(visible=(i == 0)) as pdf_row:
+                        pf = gr.File(
+                            label="PDF",
+                            file_types=[".pdf"],
+                            scale=3,
+                            show_label=False,
+                        )
+                        ps = gr.Number(value=1,  minimum=1, precision=0, label="From page", scale=1)
+                        pe = gr.Number(value=20, minimum=1, precision=0, label="To page",   scale=1)
+                        pd_ = gr.Button("✕", size="sm", scale=0, min_width=40)
+                    pdf_file_inputs.append(pf)
+                    pdf_start_inputs.append(ps)
+                    pdf_end_inputs.append(pe)
+                    pdf_del_btns.append(pd_)
+                    pdf_rows_ui.append(pdf_row)
+
+                for i, d in enumerate(pdf_del_btns):
+                    def _on_pdf_delete(vis, idx=i):
+                        new = list(vis)
+                        new[idx] = False
+                        return [gr.Row(visible=v) for v in new] + [new]
+                    d.click(_on_pdf_delete, inputs=pdf_visible_state, outputs=pdf_rows_ui + [pdf_visible_state])
+
+                add_pdf_btn = gr.Button("＋ Add PDF", size="sm")
+
+                def _on_pdf_add(vis):
+                    new = list(vis)
+                    for j in range(len(new)):
+                        if not new[j]:
+                            new[j] = True
+                            break
+                    return [gr.Row(visible=v) for v in new] + [new]
+
+                add_pdf_btn.click(_on_pdf_add, inputs=pdf_visible_state, outputs=pdf_rows_ui + [pdf_visible_state])
                 notes_input = gr.File(
                     label="Handwritten notes (optional, multiple allowed)",
                     file_types=[".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"],
@@ -246,7 +295,9 @@ with gr.Blocks(title="Flashcard Generator") as demo:
 
         gen_event = submit_btn.click(
             fn      = generate_card_callback,
-            inputs  = [pdf_input, notes_input, ref_input, page_start, page_end, visible_state] + topic_boxes + mode_radios,
+            inputs  = [notes_input, ref_input, pdf_visible_state, visible_state]
+                      + pdf_file_inputs + pdf_start_inputs + pdf_end_inputs
+                      + topic_boxes + mode_radios,
             outputs = [status_output, pdf_output],
         )
         cancel_btn.click(fn=None, cancels=[gen_event])
@@ -255,8 +306,8 @@ with gr.Blocks(title="Flashcard Generator") as demo:
         gr.Markdown("""
         ## How to use
 
-        1. Upload a PDF, handwritten notes image, or reference image (at least one required)
-        2. If uploading a PDF, use the page sliders to select the relevant chapter
+        1. Upload one or more PDFs — each row has its own "From page" / "To page" range; use **＋ Add PDF** to add more
+        2. Optionally upload handwritten notes images or a reference image
         3. Fill in the **Queries** — type a topic on the left, pick Flash Card or Summary on the right
         4. Use **＋ Add query** to add more rows, or **✕** to remove one
         5. Click Generate and download all PDFs

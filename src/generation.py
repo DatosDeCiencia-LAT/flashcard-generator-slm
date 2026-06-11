@@ -55,19 +55,19 @@ Rules:
 - All fields are required"""
 
 FLASHCARD_EXAMPLE = """{
-    "concept": "Amide",
-    "definition": "An amide is a compound derived from a carboxylic acid where the hydroxyl group is replaced by an amino group.",
-    "key_points": ["Derived from carboxylic acids", "Contains a carbonyl group bonded to nitrogen", "Found in proteins as peptide bonds"],
-    "examples": ["Acetamide (CH3CONH2)", "Nylon (synthetic polyamide)"],
-    "suggested_image": "Structural formula of an amide showing the carbonyl group bonded to nitrogen"
+    "concept": "Amida",
+    "definition": "Una amida es un compuesto derivado de un ácido carboxílico donde el grupo hidroxilo es reemplazado por un grupo amino. Las amidas se encuentran en proteínas y muchas moléculas biológicas.",
+    "key_points": ["Derivada de ácidos carboxílicos", "Contiene un grupo carbonilo unido a nitrógeno", "Presente en proteínas como enlaces peptídicos"],
+    "examples": ["Acetamida (CH3CONH2)", "Nylon (poliamida sintética)"],
+    "suggested_image": "Fórmula estructural de una amida mostrando el grupo carbonilo unido a nitrógeno"
 }"""
 
 SUMMARY_EXAMPLE = """{
-    "topic": "Carboxylic Acid Derivatives",
-    "overview": "Carboxylic acid derivatives are compounds that can be hydrolyzed to give carboxylic acids.",
+    "topic": "Derivados de ácidos carboxílicos",
+    "overview": "Los derivados de ácidos carboxílicos son compuestos que pueden hidrolizarse para dar ácidos carboxílicos.",
     "concepts": [
-        {"name": "Ester", "description": "Formed by reaction of carboxylic acid with alcohol"},
-        {"name": "Amide", "description": "Formed by reaction of carboxylic acid with amine"}
+        {"name": "Éster", "description": "Formado por la reacción de un ácido carboxílico con un alcohol"},
+        {"name": "Amida", "description": "Formada por la reacción de un ácido carboxílico con una amina"}
     ]
 }"""
 
@@ -88,16 +88,41 @@ class ConsolidatedSummary:
     concepts : list
 
 
+def _truncate_at_complete_json(raw: str) -> str:
+    """Walk the string tracking depth and string context so brackets inside
+    string values don't fool the truncation point detection."""
+    depth         = 0
+    in_string     = False
+    escape        = False
+    last_complete = -1
+
+    for i, ch in enumerate(raw):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:
+                last_complete = i
+
+    return raw[:last_complete + 1] if last_complete != -1 else raw
+
+
 def _clean_json_output(raw: str) -> str:
     raw = re.sub(r"```json|```", "", raw).strip()
     raw = re.sub(r",\s*}", "}", raw)
     raw = re.sub(r",\s*]", "]", raw)
-    # Truncate at the last complete closing bracket when output is cut mid-value
-    for closing in ["}", "]"]:
-        last = raw.rfind(closing)
-        if last != -1:
-            raw = raw[:last + 1]
-            break
+    raw = _truncate_at_complete_json(raw)
     return raw
 
 
