@@ -1,7 +1,6 @@
 gradio>=4.44.0
 pymupdf
-paddleocr
-paddlepaddle
+easyocr
 pillow
 numpy
 llama-index-core

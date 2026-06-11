@@ -75,13 +75,10 @@ def process_inputs(
         text_parts.append(extract_text_from_pdf(tmp_path))
         tmp_path.unlink()
 
-    if notes_image is not None:
-        from paddleocr import PaddleOCR
-        ocr    = PaddleOCR(use_angle_cls=True, lang="es", show_log=False)
-        result = ocr.ocr(notes_image, cls=True)
-        if result and result[0]:
-            lines = [line[1][0] for line in result[0] if line[1][1] >= 0.7]
-            text_parts.append("\n".join(lines))
+    if notes_image:
+        from src.ingestion import extract_text_from_image
+        for img_file in notes_image:
+            text_parts.append(extract_text_from_image(Path(img_file)))
 
     if ref_image is not None:
         img = PILImage.open(ref_image).convert("RGB")
@@ -104,16 +101,20 @@ def generate_card_callback(
     page_start: int,
     page_end: int,
     mode: str,
-) -> tuple[str, "str | None"]:
+):
     if not topic.strip():
-        return "Please enter a topic.", None
+        yield "Please enter a topic.", None
+        return
 
     try:
+        yield "Extracting text from files...", None
         text, ref_imgs = process_inputs(pdf_file, notes_image, ref_image, page_start, page_end)
 
         if not text.strip():
-            return "No text could be extracted from the provided files.", None
+            yield "No text could be extracted from the provided files.", None
+            return
 
+        yield "Chunking and indexing text...", None
         chunks = fixed_size_chunking(text)
         index  = load_or_build_index(
             chunks          = chunks,
@@ -122,6 +123,7 @@ def generate_card_callback(
         )
 
         gradio_mode = "flashcard" if mode == "Flash Card" else "summary"
+        yield "Generating with AI model (this may take 1–3 minutes)...", None
         result = generate_flashcard(
             query       = topic,
             index       = index,
@@ -130,15 +132,16 @@ def generate_card_callback(
             mode        = gradio_mode,
         )
 
+        yield "Exporting to PDF...", None
         ref_image_pil = ref_imgs[0] if ref_imgs else None
         pdf_out       = OUT_DIR.resolve() / f"{_safe_filename(topic)}_{gradio_mode}.pdf"
         export_to_pdf(result, pdf_out, reference_image=ref_image_pil)
 
         label = result.concept if gradio_mode == "flashcard" else result.topic
-        return f"Generated successfully: {label}", str(pdf_out)
+        yield f"Generated successfully: {label}", str(pdf_out)
 
     except Exception as e:
-        return f"Error: {e}", None
+        yield f"Error: {e}", None
 
 
 # ── Gradio interface ───────────────────────────────────────────────────────────
@@ -158,7 +161,11 @@ with gr.Blocks(title="Flashcard Generator") as demo:
                 pdf_input   = gr.File(label="PDF document (optional)", file_types=[".pdf"])
                 page_start  = gr.Slider(minimum=1, maximum=500, value=1,  step=1, label="First page")
                 page_end    = gr.Slider(minimum=1, maximum=500, value=20, step=1, label="Last page")
-                notes_input = gr.Image(label="Handwritten notes (optional)", type="filepath")
+                notes_input = gr.File(
+                    label="Handwritten notes (optional, multiple allowed)",
+                    file_types=[".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"],
+                    file_count="multiple",
+                )
                 ref_input   = gr.Image(label="Reference image (optional)",   type="filepath")
                 topic_input = gr.Textbox(label="Topic", placeholder="e.g. amide, photosynthesis, Newton's laws")
                 mode_input  = gr.Radio(
@@ -166,17 +173,20 @@ with gr.Blocks(title="Flashcard Generator") as demo:
                     value="Flash Card",
                     label="Output mode",
                 )
-                submit_btn  = gr.Button("Generate", variant="primary")
+                with gr.Row():
+                    submit_btn = gr.Button("Generate", variant="primary")
+                    cancel_btn = gr.Button("Cancel", variant="stop")
 
             with gr.Column(scale=1):
                 status_output = gr.Textbox(label="Status", interactive=False)
                 pdf_output    = gr.File(label="Download PDF")
 
-        submit_btn.click(
+        gen_event = submit_btn.click(
             fn      = generate_card_callback,
             inputs  = [pdf_input, notes_input, ref_input, topic_input, page_start, page_end, mode_input],
             outputs = [status_output, pdf_output],
         )
+        cancel_btn.click(fn=None, cancels=[gen_event])
 
     with gr.Tab("About"):
         gr.Markdown("""

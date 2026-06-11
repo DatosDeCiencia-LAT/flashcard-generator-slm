@@ -33,8 +33,8 @@ _ocr_engine = None
 def _get_ocr_engine():
     global _ocr_engine
     if _ocr_engine is None:
-        from paddleocr import PaddleOCR
-        _ocr_engine = PaddleOCR(use_angle_cls=True, lang="es", show_log=False)
+        import easyocr
+        _ocr_engine = easyocr.Reader(["es"], verbose=False)
     return _ocr_engine
 
 
@@ -62,15 +62,9 @@ def extract_text_from_pdf(pdf_path: Path, min_block_chars: int = 20) -> str:
 
 
 def extract_text_from_image(image_path: Path, confidence_threshold: float = 0.7) -> str:
-    ocr = _get_ocr_engine()
-    result = ocr.ocr(str(image_path), cls=True)
-    if not result or not result[0]:
-        return ""
-    lines = [
-        line[1][0]
-        for line in result[0]
-        if line[1][1] >= confidence_threshold
-    ]
+    reader = _get_ocr_engine()
+    result = reader.readtext(str(image_path))
+    lines = [text for _, text, conf in result if conf >= confidence_threshold]
     return "\n".join(lines)
 
 
