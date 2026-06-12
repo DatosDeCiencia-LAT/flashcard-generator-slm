@@ -120,8 +120,9 @@ def _truncate_at_complete_json(raw: str) -> str:
 
 def _clean_json_output(raw: str) -> str:
     raw = re.sub(r"```json|```", "", raw).strip()
-    raw = re.sub(r",\s*}", "}", raw)
-    raw = re.sub(r",\s*]", "]", raw)
+    raw = re.sub(r",\s*}", "}", raw)   # trailing comma before }
+    raw = re.sub(r",\s*]", "]", raw)   # trailing comma before ]
+    raw = re.sub(r"\{\s*,", "{", raw)  # leading comma after {
     raw = _truncate_at_complete_json(raw)
     return raw
 
