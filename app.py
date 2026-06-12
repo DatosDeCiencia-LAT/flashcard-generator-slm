@@ -50,12 +50,8 @@ from src.export      import export_to_pdf
 def process_inputs(
     pdf_rows,       # list of (path, page_start, page_end) for each visible PDF row
     notes_image,
-    ref_image,
-) -> tuple[str, list]:
-    from PIL import Image as PILImage
-
-    text_parts     = []
-    reference_imgs = []
+) -> str:
+    text_parts = []
 
     if pdf_rows:
         from src.ingestion import extract_text_from_pdf
@@ -79,11 +75,7 @@ def process_inputs(
         for img_file in notes_image:
             text_parts.append(extract_text_from_image(Path(img_file)))
 
-    if ref_image is not None:
-        img = PILImage.open(ref_image).convert("RGB")
-        reference_imgs.append(img)
-
-    return "\n\n".join(text_parts), reference_imgs
+    return "\n\n".join(text_parts)
 
 
 def _safe_filename(topic: str) -> str:
@@ -102,7 +94,6 @@ def _parse_mode(raw: str) -> str:
 
 def generate_card_callback(
     notes_image,
-    ref_image,
     pdf_visible,
     query_visible,
     *rest,
@@ -113,7 +104,8 @@ def generate_card_callback(
     pdf_starts = list(rest[P:2*P])
     pdf_ends   = list(rest[2*P:3*P])
     topics     = list(rest[3*P:3*P+Q])
-    modes      = list(rest[3*P+Q:])
+    modes      = list(rest[3*P+Q:3*P+2*Q])
+    ref_images = list(rest[3*P+2*Q:])
 
     pdf_rows = [
         (pf, int(ps or 1), int(pe or 20))
@@ -121,8 +113,8 @@ def generate_card_callback(
         if v and pf
     ]
     valid = [
-        (t.strip(), m)
-        for t, m, v in zip(topics, modes, query_visible)
+        (t.strip(), m, r)
+        for t, m, r, v in zip(topics, modes, ref_images, query_visible)
         if v and t.strip()
     ]
     if not valid:
@@ -132,7 +124,7 @@ def generate_card_callback(
     pdf_paths = []
     try:
         yield "Extracting text from files...", None
-        text, ref_imgs = process_inputs(pdf_rows, notes_image, ref_image)
+        text = process_inputs(pdf_rows, notes_image)
 
         if not text.strip():
             yield "No text could be extracted from the provided files.", None
@@ -146,10 +138,9 @@ def generate_card_callback(
             persist_dir     = INDEX_DIR / f"session_{hash(text[:100])}",
         )
 
-        ref_image_pil = ref_imgs[0] if ref_imgs else None
-        total         = len(valid)
+        total = len(valid)
 
-        for i, (topic, mode_raw) in enumerate(valid, 1):
+        for i, (topic, mode_raw, ref_img_path) in enumerate(valid, 1):
             gradio_mode = _parse_mode(mode_raw)
             yield f"[{i}/{total}] Generating '{topic}' ({gradio_mode})...", pdf_paths or None
 
@@ -160,6 +151,11 @@ def generate_card_callback(
                 embed_model = embed_model,
                 mode        = gradio_mode,
             )
+
+            ref_image_pil = None
+            if ref_img_path and gradio_mode == "flashcard":
+                from PIL import Image as PILImage
+                ref_image_pil = PILImage.open(ref_img_path).convert("RGB")
 
             pdf_out = OUT_DIR.resolve() / f"{_safe_filename(topic)}_{gradio_mode}.pdf"
             export_to_pdf(result, pdf_out, reference_image=ref_image_pil)
@@ -236,14 +232,14 @@ with gr.Blocks(title="Flashcard Generator") as demo:
                     file_types=[".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"],
                     file_count="multiple",
                 )
-                ref_input = gr.Image(label="Reference image (optional)", type="filepath")
 
                 gr.Markdown("**Queries**")
-                visible_state = gr.State([i < 3 for i in range(MAX_ROWS)])
-                topic_boxes   = []
-                mode_radios   = []
-                del_btns      = []
-                rows_ui       = []
+                visible_state    = gr.State([i < 3 for i in range(MAX_ROWS)])
+                topic_boxes      = []
+                mode_radios      = []
+                ref_image_inputs = []
+                del_btns         = []
+                rows_ui          = []
 
                 for i in range(MAX_ROWS):
                     with gr.Row(visible=(i < 3)) as row:
@@ -259,11 +255,27 @@ with gr.Blocks(title="Flashcard Generator") as demo:
                             show_label=False,
                             scale=2,
                         )
+                        r = gr.Image(
+                            label="Reference image",
+                            type="filepath",
+                            show_label=False,
+                            scale=1,
+                            min_width=80,
+                            height=80,
+                            visible=True,
+                        )
                         d = gr.Button("✕", size="sm", scale=0, min_width=40)
                     topic_boxes.append(t)
                     mode_radios.append(m)
+                    ref_image_inputs.append(r)
                     del_btns.append(d)
                     rows_ui.append(row)
+
+                # Toggle ref image visibility when mode changes
+                for m, r in zip(mode_radios, ref_image_inputs):
+                    def _on_mode_change(val, ref=r):
+                        return gr.Image(visible=(val == "Flash Card"))
+                    m.change(_on_mode_change, inputs=m, outputs=r)
 
                 # Wire delete buttons after all rows exist so outputs list is complete
                 for i, d in enumerate(del_btns):
@@ -295,9 +307,9 @@ with gr.Blocks(title="Flashcard Generator") as demo:
 
         gen_event = submit_btn.click(
             fn      = generate_card_callback,
-            inputs  = [notes_input, ref_input, pdf_visible_state, visible_state]
+            inputs  = [notes_input, pdf_visible_state, visible_state]
                       + pdf_file_inputs + pdf_start_inputs + pdf_end_inputs
-                      + topic_boxes + mode_radios,
+                      + topic_boxes + mode_radios + ref_image_inputs,
             outputs = [status_output, pdf_output],
         )
         cancel_btn.click(fn=None, cancels=[gen_event])

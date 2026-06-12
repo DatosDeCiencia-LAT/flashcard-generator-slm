@@ -130,7 +130,7 @@ def _clean_json_output(raw: str) -> str:
 _llm = None
 
 
-def load_language_model(model_path: Path, n_ctx: int = 2048) -> Llama:
+def load_language_model(model_path: Path, n_ctx: int = 4096) -> Llama:
     global _llm
     if _llm is None:
         _llm = Llama(
@@ -155,7 +155,7 @@ def generate_flashcard(
 
     system_prompt = SYSTEM_PROMPT_FLASHCARD if mode == "flashcard" else SYSTEM_PROMPT_SUMMARY
     example       = FLASHCARD_EXAMPLE if mode == "flashcard" else SUMMARY_EXAMPLE
-    max_tokens    = 1024 if mode == "flashcard" else 1536
+    max_tokens    = 2048 if mode == "flashcard" else 2048
 
     retriever = index.as_retriever(similarity_top_k=k, embed_model=embed_model)
     nodes     = retriever.retrieve(query)
