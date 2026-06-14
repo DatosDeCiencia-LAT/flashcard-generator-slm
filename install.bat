@@ -28,20 +28,22 @@ echo.
 REM Write PowerShell script to temp file to avoid line-continuation issues
 set PS1=%TEMP%\flashcard_install_python.ps1
 (
+    echo $ErrorActionPreference = 'Stop'
     echo [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    echo $url = 'https://www.python.org/ftp/python/3.10.13/python-3.10.13-amd64.exe'
+    echo $url = 'https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe'
     echo $output = "$env:TEMP\python_installer.exe"
     echo Write-Host 'Descargando Python desde python.org...'
     echo ^(New-Object System.Net.WebClient^).DownloadFile^($url, $output^)
     echo Write-Host 'Ejecutando instalador de Python...'
     echo Start-Process $output -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait
-    echo Remove-Item $output -Force
+    echo Remove-Item $output -Force -ErrorAction SilentlyContinue
 ) > "%PS1%"
 
 PowerShell -NoProfile -ExecutionPolicy Bypass -File "%PS1%"
+set PS_EXIT=%errorlevel%
 del "%PS1%" 2>nul
 
-if %errorlevel% neq 0 (
+if %PS_EXIT% neq 0 (
     echo.
     echo ERROR: No se pudo instalar Python automaticamente.
     echo Visita https://www.python.org/downloads/ e instala Python 3.10 manualmente.
