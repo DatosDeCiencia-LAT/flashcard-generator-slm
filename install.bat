@@ -70,7 +70,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-pip install -r requirements.txt
+pip install -r "%~dp0requirements.txt"
 if %errorlevel% neq 0 (
     echo ERROR: No se pudieron instalar las dependencias
     pause
