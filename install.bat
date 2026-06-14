@@ -25,15 +25,21 @@ if %errorlevel% equ 0 (
 echo Paso 1: Instalando Python 3.10 (puede tardar varios minutos)...
 echo.
 
-PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-    $url = 'https://www.python.org/ftp/python/3.10.13/python-3.10.13-amd64.exe'; ^
-    $output = '%TEMP%\python_installer.exe'; ^
-    Write-Host 'Descargando Python desde python.org...'; ^
-    (New-Object System.Net.WebClient).DownloadFile($url, $output); ^
-    Write-Host 'Ejecutando instalador de Python...'; ^
-    Start-Process $output -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait; ^
-    Remove-Item $output -Force"
+REM Write PowerShell script to temp file to avoid line-continuation issues
+set PS1=%TEMP%\flashcard_install_python.ps1
+(
+    echo [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    echo $url = 'https://www.python.org/ftp/python/3.10.13/python-3.10.13-amd64.exe'
+    echo $output = "$env:TEMP\python_installer.exe"
+    echo Write-Host 'Descargando Python desde python.org...'
+    echo ^(New-Object System.Net.WebClient^).DownloadFile^($url, $output^)
+    echo Write-Host 'Ejecutando instalador de Python...'
+    echo Start-Process $output -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait
+    echo Remove-Item $output -Force
+) > "%PS1%"
+
+PowerShell -NoProfile -ExecutionPolicy Bypass -File "%PS1%"
+del "%PS1%" 2>nul
 
 if %errorlevel% neq 0 (
     echo.
