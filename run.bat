@@ -19,5 +19,10 @@ if exist "C:\Program Files\GTK3-Runtime Win64\bin" (
     set "PATH=C:\Program Files\GTK3-Runtime Win64\bin;%PATH%"
 )
 
-python "%~dp0app.py"
+python "%~dp0app.py" > "%~dp0error_log.txt" 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo La app cerro con un error. Revisa el archivo error_log.txt en la carpeta de la app.
+    echo.
+)
 pause
