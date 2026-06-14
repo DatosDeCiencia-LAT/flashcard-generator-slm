@@ -70,7 +70,29 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-pip install -r "%~dp0requirements.txt"
+REM Try pre-built wheel for llama-cpp-python first (no compiler needed)
+echo Instalando llama-cpp-python (intentando rueda pre-compilada)...
+pip install llama-cpp-python==0.3.2 --only-binary :all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu >nul 2>&1
+if %errorlevel% neq 0 (
+    echo No se encontro rueda pre-compilada. Instalando compilador C++ de Microsoft...
+    echo Esto puede tardar 10-20 minutos y requiere ~3 GB de espacio...
+    winget install --id Microsoft.VisualStudio.2022.BuildTools --accept-source-agreements --accept-package-agreements --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" 2>nul
+    winget install --id Kitware.CMake --accept-source-agreements --accept-package-agreements 2>nul
+    echo Compilando llama-cpp-python desde codigo fuente...
+    pip install llama-cpp-python==0.3.2 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+    if %errorlevel% neq 0 (
+        echo ERROR: No se pudo instalar llama-cpp-python.
+        echo Instala manualmente Visual Studio Build Tools desde:
+        echo   https://visualstudio.microsoft.com/visual-cpp-build-tools/
+        echo Selecciona el workload "Desarrollo de escritorio con C++"
+        pause
+        exit /b 1
+    )
+)
+echo [OK] llama-cpp-python instalado
+
+REM Install remaining dependencies (llama-cpp-python already satisfied)
+pip install --prefer-binary -r "%~dp0requirements.txt"
 if %errorlevel% neq 0 (
     echo ERROR: No se pudieron instalar las dependencias
     pause
