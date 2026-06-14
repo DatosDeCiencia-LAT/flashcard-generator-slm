@@ -58,9 +58,40 @@ echo [OK] Python instalado exitosamente
 REM Refresh PATH for the current session
 set "PATH=C:\Program Files\Python310;C:\Program Files\Python310\Scripts;%PATH%"
 
+:install_gtk
+echo.
+echo Paso 2: Instalando GTK runtime (necesario para exportar PDF)...
+echo.
+
+set GTK_PS1=%TEMP%\flashcard_install_gtk.ps1
+(
+    echo $ErrorActionPreference = 'Stop'
+    echo [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    echo $url = 'https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases/download/2022-01-04/gtk3-runtime-3.24.31-2022-01-04-ts-win64.exe'
+    echo $output = "$env:TEMP\gtk_installer.exe"
+    echo Write-Host 'Descargando GTK runtime...'
+    echo ^(New-Object System.Net.WebClient^).DownloadFile^($url, $output^)
+    echo Write-Host 'Instalando GTK runtime...'
+    echo Start-Process $output -ArgumentList '/S' -Wait
+    echo Remove-Item $output -Force -ErrorAction SilentlyContinue
+) > "%GTK_PS1%"
+
+PowerShell -NoProfile -ExecutionPolicy Bypass -File "%GTK_PS1%"
+set GTK_EXIT=%errorlevel%
+del "%GTK_PS1%" 2>nul
+
+if %GTK_EXIT% neq 0 (
+    echo AVISO: No se pudo instalar GTK automaticamente.
+    echo La exportacion de PDF podria fallar.
+    echo Instala manualmente desde:
+    echo   https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases
+) else (
+    echo [OK] GTK runtime instalado
+)
+
 :install_deps
 echo.
-echo Paso 2: Instalando paquetes requeridos...
+echo Paso 3: Instalando paquetes requeridos...
 echo.
 
 python -m pip install --upgrade pip
@@ -72,7 +103,7 @@ if %errorlevel% neq 0 (
 
 REM Try pre-built wheel for llama-cpp-python first (no compiler needed)
 echo Instalando llama-cpp-python (intentando rueda pre-compilada)...
-pip install llama-cpp-python==0.3.2 --only-binary :all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu >nul 2>&1
+pip install llama-cpp-python==0.3.2 --only-binary :all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 if %errorlevel% neq 0 (
     echo No se encontro rueda pre-compilada. Instalando compilador C++ de Microsoft...
     echo Esto puede tardar 10-20 minutos y requiere ~3 GB de espacio...
@@ -81,20 +112,25 @@ if %errorlevel% neq 0 (
     echo Compilando llama-cpp-python desde codigo fuente...
     pip install llama-cpp-python==0.3.2 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
     if %errorlevel% neq 0 (
-        echo ERROR: No se pudo instalar llama-cpp-python.
-        echo Instala manualmente Visual Studio Build Tools desde:
-        echo   https://visualstudio.microsoft.com/visual-cpp-build-tools/
-        echo Selecciona el workload "Desarrollo de escritorio con C++"
-        pause
-        exit /b 1
+        echo.
+        echo AVISO: No se pudo instalar llama-cpp-python automaticamente.
+        echo La app no funcionara hasta resolverlo. Instrucciones:
+        echo   1. Instala Visual Studio Build Tools desde:
+        echo      https://visualstudio.microsoft.com/visual-cpp-build-tools/
+        echo   2. Selecciona el workload "Desarrollo de escritorio con C++"
+        echo   3. Vuelve a ejecutar install.bat
+        echo.
+        echo Continuando con la instalacion de los demas paquetes...
+        echo.
     )
 )
-echo [OK] llama-cpp-python instalado
 
-REM Install remaining dependencies (llama-cpp-python already satisfied)
-pip install --prefer-binary -r "%~dp0requirements.txt"
+REM Always install remaining packages regardless of llama-cpp-python result
+echo Instalando paquetes restantes...
+pip install --prefer-binary gradio pymupdf easyocr pillow numpy weasyprint huggingface-hub
+pip install --prefer-binary llama-index-core llama-index-embeddings-huggingface llama-index-vector-stores-chroma chromadb
 if %errorlevel% neq 0 (
-    echo ERROR: No se pudieron instalar las dependencias
+    echo ERROR: No se pudieron instalar algunos paquetes
     pause
     exit /b 1
 )

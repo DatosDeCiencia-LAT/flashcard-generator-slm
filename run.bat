@@ -14,5 +14,10 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-python app.py
+REM Add GTK to PATH so WeasyPrint can find its libraries
+if exist "C:\Program Files\GTK3-Runtime Win64\bin" (
+    set "PATH=C:\Program Files\GTK3-Runtime Win64\bin;%PATH%"
+)
+
+python "%~dp0app.py"
 pause
