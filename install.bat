@@ -1,75 +1,80 @@
 @echo off
 REM Flashcard Generator - Automatic Installer
-REM This script installs Python and all dependencies automatically
+
+REM Auto-elevate to administrator if not already elevated
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Solicitando permisos de administrador...
+    PowerShell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process '%~f0' -Verb RunAs"
+    exit /b
+)
 
 echo.
 echo ========================================
-echo Flashcard Generator - Installation
+echo Flashcard Generator - Instalacion
 echo ========================================
 echo.
 
 REM Check if Python is already installed
 python --version >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✓ Python is already installed
+    echo [OK] Python ya esta instalado
     goto install_deps
 )
 
-echo.
-echo Step 1: Installing Python (this may take a few minutes)...
+echo Paso 1: Instalando Python 3.10 (puede tardar varios minutos)...
 echo.
 
-REM Download Python 3.10 installer using PowerShell
 PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
     $url = 'https://www.python.org/ftp/python/3.10.13/python-3.10.13-amd64.exe'; ^
     $output = '%TEMP%\python_installer.exe'; ^
-    Write-Host 'Downloading Python from official source...'; ^
+    Write-Host 'Descargando Python desde python.org...'; ^
     (New-Object System.Net.WebClient).DownloadFile($url, $output); ^
-    Write-Host 'Running Python installer...'; ^
-    & $output /quiet InstallAllUsers=1 PrependPath=1 Include_test=0 | Out-Null; ^
+    Write-Host 'Ejecutando instalador de Python...'; ^
+    Start-Process $output -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Wait; ^
     Remove-Item $output -Force"
 
 if %errorlevel% neq 0 (
     echo.
-    echo WARNING: Automatic Python installation failed.
-    echo Please visit https://www.python.org/downloads/ and install Python 3.10 manually
-    echo Make sure to check "Add Python to PATH" during installation
+    echo ERROR: No se pudo instalar Python automaticamente.
+    echo Visita https://www.python.org/downloads/ e instala Python 3.10 manualmente.
+    echo Durante la instalacion, marca la opcion "Add Python to PATH".
     echo.
     pause
     exit /b 1
 )
 
-echo ✓ Python installed successfully
+echo [OK] Python instalado exitosamente
 
-REM Refresh PATH environment variable
-set "PATH=%APPDATA%\Python\Python310\Scripts;C:\Program Files\Python310;%PATH%"
+REM Refresh PATH for the current session
+set "PATH=C:\Program Files\Python310;C:\Program Files\Python310\Scripts;%PATH%"
 
 :install_deps
 echo.
-echo Step 2: Installing required packages...
+echo Paso 2: Instalando paquetes requeridos...
 echo.
 
 python -m pip install --upgrade pip
 if %errorlevel% neq 0 (
-    echo Error: Failed to upgrade pip
+    echo ERROR: No se pudo actualizar pip
     pause
     exit /b 1
 )
 
 pip install -r requirements.txt
 if %errorlevel% neq 0 (
-    echo Error: Failed to install dependencies
+    echo ERROR: No se pudieron instalar las dependencias
     pause
     exit /b 1
 )
 
 echo.
 echo ========================================
-echo ✓ Installation Complete!
+echo [OK] Instalacion completada!
 echo ========================================
 echo.
-echo You can now run the app by double-clicking:
+echo Ahora puedes abrir la app haciendo doble clic en:
 echo   run.bat
 echo.
 pause
