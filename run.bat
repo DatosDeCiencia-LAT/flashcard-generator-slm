@@ -1,31 +1,43 @@
 @echo off
+cd /d "%~dp0"
 echo Iniciando Flashcard Generator...
 
-REM Add Python to PATH explicitly in case it was installed in this session
-set "PATH=C:\Program Files\Python310;C:\Program Files\Python310\Scripts;%PATH%"
-set "PATH=%LOCALAPPDATA%\Programs\Python\Python310;%LOCALAPPDATA%\Programs\Python\Python310\Scripts;%PATH%"
+REM Add GTK to PATH for WeasyPrint
+set "PATH=C:\Program Files\GTK3-Runtime Win64\bin;%PATH%"
 
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo ERROR: Python no esta instalado o no esta en el PATH.
-    echo.
-    echo Por favor ejecuta primero: install.bat
-    echo Haz clic derecho sobre install.bat y selecciona "Ejecutar como administrador"
-    echo.
-    pause
-    exit /b 1
+REM Find Python by checking known locations in order
+if exist "C:\Program Files\Python310\python.exe" (
+    set PYTHON_EXE=C:\Program Files\Python310\python.exe
+    goto :run_app
+)
+if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" (
+    set PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python310\python.exe
+    goto :run_app
+)
+if exist "C:\Python310\python.exe" (
+    set PYTHON_EXE=C:\Python310\python.exe
+    goto :run_app
 )
 
-REM Add GTK to PATH so WeasyPrint can find its libraries
-if exist "C:\Program Files\GTK3-Runtime Win64\bin" (
-    set "PATH=C:\Program Files\GTK3-Runtime Win64\bin;%PATH%"
-)
+echo.
+echo ERROR: No se encontro Python en ninguna ubicacion conocida.
+echo Ubicaciones buscadas:
+echo   C:\Program Files\Python310\python.exe
+echo   %LOCALAPPDATA%\Programs\Python\Python310\python.exe
+echo   C:\Python310\python.exe
+echo.
+echo Ejecuta install.bat como administrador para instalarlo.
+echo.
+pause
+exit /b 1
 
-python "%~dp0app.py" > "%~dp0error_log.txt" 2>&1
+:run_app
+echo Usando Python: %PYTHON_EXE%
+echo.
+"%PYTHON_EXE%" app.py
 if %errorlevel% neq 0 (
     echo.
-    echo La app cerro con un error. Revisa el archivo error_log.txt en la carpeta de la app.
+    echo La app cerro con un error. Revisa los mensajes arriba.
     echo.
 )
 pause

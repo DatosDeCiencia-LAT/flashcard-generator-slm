@@ -3,7 +3,6 @@ import io
 from pathlib import Path
 
 from PIL import Image
-from weasyprint import HTML
 
 from src.generation import ConsolidatedSummary, FlashCard
 
@@ -156,6 +155,14 @@ def export_to_pdf(
         html = flashcard_to_html(content, reference_image)
     else:
         html = summary_to_html(content)
+
+    try:
+        from weasyprint import HTML
+    except Exception as e:
+        raise RuntimeError(
+            "No se puede exportar PDF: faltan las librerias GTK en este sistema. "
+            "Ejecuta install.bat como administrador para instalarlas."
+        ) from e
 
     HTML(string=html).write_pdf(str(output_path))
     return output_path
