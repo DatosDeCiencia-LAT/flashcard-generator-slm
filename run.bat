@@ -1,6 +1,10 @@
 @echo off
 echo Iniciando Flashcard Generator...
 
+REM Add Python to PATH explicitly in case it was installed in this session
+set "PATH=C:\Program Files\Python310;C:\Program Files\Python310\Scripts;%PATH%"
+set "PATH=%LOCALAPPDATA%\Programs\Python\Python310;%LOCALAPPDATA%\Programs\Python\Python310\Scripts;%PATH%"
+
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
@@ -8,7 +12,6 @@ if %errorlevel% neq 0 (
     echo.
     echo Por favor ejecuta primero: install.bat
     echo Haz clic derecho sobre install.bat y selecciona "Ejecutar como administrador"
-    echo Luego cierra esta ventana, abre una nueva y vuelve a ejecutar run.bat
     echo.
     pause
     exit /b 1
