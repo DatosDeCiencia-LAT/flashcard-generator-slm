@@ -8,6 +8,11 @@ sdk_version: 5.33.0
 python_version: 3.10.12
 app_file: app.py
 pinned: false
+tags:
+  - track:backyard
+  - achievement:offgrid
+  - achievement:llama
+  - achievement:fieldnotes
 ---
 
 # Flashcard Generator SLM
