@@ -148,6 +148,23 @@ Then open `http://localhost:7860` in your browser.
 Notebooks, evaluation results, and documentation:
 https://github.com/DatosDeCiencia-LAT/flashcard-generator-slm
 
+## Repository
+
+Notebooks, evaluation results, and documentation:
+https://github.com/DatosDeCiencia-LAT/flashcard-generator-slm
+
+## Demo Video
+
+https://youtu.be/PF_Z1FAPU7g
+
+## Social Media
+
+LinkedIn: https://www.linkedin.com/posts/juanessao_buildsmallhackathon-huggingface-rag-share-7472346387905581057-gSfS/
+
+Instagram: https://www.instagram.com/reel/DZnXF_KJwt_/
+
 ## Author
 
 Juan Esteban Agudelo Ortiz — Founder and principal author
+
+HuggingFace: [@juanessao](https://huggingface.co/juanessao)

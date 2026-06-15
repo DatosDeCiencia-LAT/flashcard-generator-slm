@@ -19,7 +19,7 @@ REM Check if Python is already installed
 python --version >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Python ya esta instalado
-    goto install_deps
+    goto install_gtk
 )
 
 echo Paso 1: Instalando Python 3.10 (puede tardar varios minutos)...
